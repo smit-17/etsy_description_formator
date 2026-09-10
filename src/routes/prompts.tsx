@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { SectionHeader, mainTabs } from "@/components/SectionHeader";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -38,13 +39,13 @@ import {
 export const Route = createFileRoute("/prompts")({
   head: () => ({
     meta: [
-      { title: "Saved AI Prompts — Etsy Description Formatter" },
+      { title: "Saved Prompts — Etsy Description Formatter" },
       {
         name: "description",
         content:
           "Store, version and manage your Etsy description-generation prompts locally in your browser — upload .md or .txt files or paste them manually.",
       },
-      { property: "og:title", content: "Saved AI Prompts" },
+      { property: "og:title", content: "Saved Prompts" },
       {
         property: "og:description",
         content:
@@ -124,7 +125,8 @@ function PromptsPage() {
           note: "Uploaded prompt file",
           content: text,
           fileName: file.name,
-          fileType: file.type || (file.name.toLowerCase().endsWith(".md") ? "text/markdown" : "text/plain"),
+          fileType:
+            file.type || (file.name.toLowerCase().endsWith(".md") ? "text/markdown" : "text/plain"),
         }),
       );
     }
@@ -205,23 +207,13 @@ function PromptsPage() {
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-background pb-16">
-      <header className="border-b border-border bg-[image:var(--gradient-navy)]">
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 text-xs font-medium text-navy-foreground/70 transition-colors hover:text-gold"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" /> Back to formatter
-          </Link>
-          <h1 className="mt-4 font-[family-name:var(--font-display)] text-2xl font-semibold tracking-tight text-navy-foreground sm:text-4xl">
-            Saved AI Prompts
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-navy-foreground/70 sm:text-base">
-            Store, version and organise your description-generation prompts. Everything stays in
-            your browser.
-          </p>
-        </div>
-      </header>
+      <SectionHeader
+        title="Saved Prompts"
+        subtitle="Store, version and organise your prompts"
+        backTo="/saved"
+        backLabel="Saved Descriptions"
+        tabs={mainTabs("prompts")}
+      />
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
         {/* Add prompts */}
@@ -489,11 +481,7 @@ function PromptsPage() {
                     >
                       <History className="h-3.5 w-3.5" /> History ({p.history.length})
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setAsDefault(p.id)}
-                      className={pillBase}
-                    >
+                    <button type="button" onClick={() => setAsDefault(p.id)} className={pillBase}>
                       <Star className="h-3.5 w-3.5" />
                       {defaultId === p.id ? "Unset default" : "Set as default"}
                     </button>

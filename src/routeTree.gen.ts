@@ -10,11 +10,25 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DescriptionRouteImport } from './routes/description'
+import { Route as ListRouteImport } from './routes/list'
 import { Route as PromptsRouteImport } from './routes/prompts'
+import { Route as SavedRouteImport } from './routes/saved'
+import { Route as StyleRouteImport } from './routes/style'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DescriptionRoute = DescriptionRouteImport.update({
+  id: '/description',
+  path: '/description',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ListRoute = ListRouteImport.update({
+  id: '/list',
+  path: '/list',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PromptsRoute = PromptsRouteImport.update({
@@ -22,31 +36,64 @@ const PromptsRoute = PromptsRouteImport.update({
   path: '/prompts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SavedRoute = SavedRouteImport.update({
+  id: '/saved',
+  path: '/saved',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StyleRoute = StyleRouteImport.update({
+  id: '/style',
+  path: '/style',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/description': typeof DescriptionRoute
+  '/list': typeof ListRoute
   '/prompts': typeof PromptsRoute
+  '/saved': typeof SavedRoute
+  '/style': typeof StyleRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/description': typeof DescriptionRoute
+  '/list': typeof ListRoute
   '/prompts': typeof PromptsRoute
+  '/saved': typeof SavedRoute
+  '/style': typeof StyleRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/description': typeof DescriptionRoute
+  '/list': typeof ListRoute
   '/prompts': typeof PromptsRoute
+  '/saved': typeof SavedRoute
+  '/style': typeof StyleRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/prompts'
+  fullPaths: '/' | '/description' | '/list' | '/prompts' | '/saved' | '/style'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/prompts'
-  id: '__root__' | '/' | '/prompts'
+  to: '/' | '/description' | '/list' | '/prompts' | '/saved' | '/style'
+  id:
+    | '__root__'
+    | '/'
+    | '/description'
+    | '/list'
+    | '/prompts'
+    | '/saved'
+    | '/style'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DescriptionRoute: typeof DescriptionRoute
+  ListRoute: typeof ListRoute
   PromptsRoute: typeof PromptsRoute
+  SavedRoute: typeof SavedRoute
+  StyleRoute: typeof StyleRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -58,6 +105,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/description': {
+      id: '/description'
+      path: '/description'
+      fullPath: '/description'
+      preLoaderRoute: typeof DescriptionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/list': {
+      id: '/list'
+      path: '/list'
+      fullPath: '/list'
+      preLoaderRoute: typeof ListRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/prompts': {
       id: '/prompts'
       path: '/prompts'
@@ -65,12 +126,30 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PromptsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/saved': {
+      id: '/saved'
+      path: '/saved'
+      fullPath: '/saved'
+      preLoaderRoute: typeof SavedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/style': {
+      id: '/style'
+      path: '/style'
+      fullPath: '/style'
+      preLoaderRoute: typeof StyleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DescriptionRoute: DescriptionRoute,
+  ListRoute: ListRoute,
   PromptsRoute: PromptsRoute,
+  SavedRoute: SavedRoute,
+  StyleRoute: StyleRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
