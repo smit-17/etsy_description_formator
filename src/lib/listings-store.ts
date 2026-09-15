@@ -1,3 +1,4 @@
+import { cache, pushCategories, pushListings } from "@/lib/cloud-sync";
 import type { ParsedResponse } from "@/lib/description-parse";
 import type { FormatOptions } from "@/lib/etsy-format";
 
@@ -27,41 +28,19 @@ export const BASE_CATEGORIES = [
 ];
 
 export function loadListings(): SavedListing[] {
-  try {
-    const raw = localStorage.getItem(LISTINGS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as SavedListing[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return cache.listings;
 }
 
 export function saveListings(list: SavedListing[]) {
-  try {
-    localStorage.setItem(LISTINGS_KEY, JSON.stringify(list));
-  } catch {
-    /* ignore */
-  }
+  pushListings(list);
 }
 
 export function loadCategories(): string[] {
-  try {
-    const raw = localStorage.getItem(CATEGORIES_KEY);
-    const parsed = raw ? (JSON.parse(raw) as string[]) : [];
-    const extra = Array.isArray(parsed) ? parsed : [];
-    return Array.from(new Set([...BASE_CATEGORIES, ...extra]));
-  } catch {
-    return [...BASE_CATEGORIES];
-  }
+  return Array.from(new Set([...BASE_CATEGORIES, ...cache.categories]));
 }
 
 export function saveCategories(list: string[]) {
-  try {
-    const extra = list.filter((c) => !BASE_CATEGORIES.includes(c));
-    localStorage.setItem(CATEGORIES_KEY, JSON.stringify(extra));
-  } catch {
-    /* ignore */
-  }
+  pushCategories(list.filter((c) => !BASE_CATEGORIES.includes(c)));
 }
 
 export function newId(): string {

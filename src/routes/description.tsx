@@ -1,3 +1,4 @@
+import { useCloudData } from "@/hooks/use-cloud-data";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -169,15 +170,15 @@ function DescriptionStudio() {
   const search = Route.useSearch();
   const openId = search.id;
 
-  useEffect(() => {
+  useCloudData(() => {
     setListings(loadListings());
     setCategories(loadCategories());
-  }, []);
+  });
 
   // A fresh studio always starts blank; only an explicit ?id= loads a record.
   useEffect(() => {
     if (!openId) return;
-    const l = loadListings().find((x) => x.id === openId);
+    const l = listings.find((x) => x.id === openId);
     if (!l) return;
     setRaw(l.raw);
     setFields({ ...emptyParsed(), ...l.fields });
@@ -185,7 +186,7 @@ function DescriptionStudio() {
     setSku(l.sku);
     setListingCategory(l.listingCategory);
     setEditingId(l.id);
-  }, [openId]);
+  }, [openId, listings]);
 
   const copy = useCallback(async (text: string, key: string) => {
     if (!text) return;

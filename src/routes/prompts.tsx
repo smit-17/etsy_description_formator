@@ -1,3 +1,4 @@
+import { useCloudData } from "@/hooks/use-cloud-data";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { SectionHeader, mainTabs } from "@/components/SectionHeader";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -91,14 +92,15 @@ function PromptsPage() {
 
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  useCloudData(() => {
     setPrompts(loadPrompts());
     setDefaultId(loadDefaultId());
     setLoaded(true);
-  }, []);
+  });
 
   useEffect(() => {
-    if (loaded) savePrompts(prompts);
+    // Only push local edits; data that just arrived from the cloud is skipped.
+    if (loaded && prompts !== loadPrompts()) savePrompts(prompts);
   }, [prompts, loaded]);
 
   const flash = useCallback((key: string) => {

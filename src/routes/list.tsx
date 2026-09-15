@@ -1,3 +1,4 @@
+import { useCloudData } from "@/hooks/use-cloud-data";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { SectionHeader, mainTabs } from "@/components/SectionHeader";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -149,13 +150,13 @@ function ListSection() {
   const [targets, setTargets] = useState<Targets>({ accounts: {}, categories: {} });
   const [copied, setCopied] = useState<string | null>(null);
 
-  useEffect(() => {
+  useCloudData(() => {
     setListings(loadListings());
     setCategories(loadCategories());
     setAccounts(loadAccounts());
     setRecords(loadRecords());
     setTargets(loadTargets());
-  }, []);
+  });
 
   const setTab = (t: Tab) =>
     navigate({ to: "/list", search: (s: ListSearch): ListSearch => ({ ...s, tab: t, sku: "" }) });

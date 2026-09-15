@@ -1,3 +1,5 @@
+import { cache, pushAccounts, pushRecords, pushTargets } from "@/lib/cloud-sync";
+
 export const PLATFORMS = [
   "Etsy",
   "Own Website",
@@ -45,31 +47,10 @@ export interface ListingRecord {
   updatedAt: string;
 }
 
-const ACCOUNTS_KEY = "lepdo-accounts-v1";
-const RECORDS_KEY = "lepdo-listing-records-v1";
-
-function read<T>(key: string): T[] {
-  try {
-    const raw = localStorage.getItem(key);
-    const parsed = raw ? (JSON.parse(raw) as T[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function write<T>(key: string, list: T[]) {
-  try {
-    localStorage.setItem(key, JSON.stringify(list));
-  } catch {
-    /* ignore */
-  }
-}
-
-export const loadAccounts = () => read<Account>(ACCOUNTS_KEY);
-export const saveAccounts = (l: Account[]) => write(ACCOUNTS_KEY, l);
-export const loadRecords = () => read<ListingRecord>(RECORDS_KEY);
-export const saveRecords = (l: ListingRecord[]) => write(RECORDS_KEY, l);
+export const loadAccounts = () => cache.accounts;
+export const saveAccounts = (l: Account[]) => pushAccounts(l);
+export const loadRecords = () => cache.records;
+export const saveRecords = (l: ListingRecord[]) => pushRecords(l);
 
 /** Listing targets ------------------------------------------------------- */
 
@@ -80,24 +61,12 @@ export interface Targets {
   categories: Record<string, number>;
 }
 
-const TARGETS_KEY = "lepdo-listing-targets-v1";
-
 export function loadTargets(): Targets {
-  try {
-    const raw = localStorage.getItem(TARGETS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Partial<Targets>) : {};
-    return { accounts: parsed.accounts ?? {}, categories: parsed.categories ?? {} };
-  } catch {
-    return { accounts: {}, categories: {} };
-  }
+  return cache.targets;
 }
 
 export function saveTargets(t: Targets) {
-  try {
-    localStorage.setItem(TARGETS_KEY, JSON.stringify(t));
-  } catch {
-    /* ignore */
-  }
+  pushTargets(t);
 }
 
 

@@ -1,3 +1,5 @@
+import { cache, pushDefaultPromptId, pushPrompts } from "@/lib/cloud-sync";
+
 export type PromptVersion = {
   version: number;
   content: string;
@@ -58,39 +60,19 @@ export function formatDate(iso: string) {
 }
 
 export function loadPrompts(): SavedPrompt[] {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as SavedPrompt[]) : [];
-  } catch {
-    return [];
-  }
+  return cache.prompts;
 }
 
 export function savePrompts(prompts: SavedPrompt[]) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(prompts));
-  } catch {
-    /* ignore */
-  }
+  pushPrompts(prompts);
 }
 
 export function loadDefaultId(): string | null {
-  try {
-    return localStorage.getItem(DEFAULT_KEY);
-  } catch {
-    return null;
-  }
+  return cache.defaultPromptId;
 }
 
 export function saveDefaultId(id: string | null) {
-  try {
-    if (id) localStorage.setItem(DEFAULT_KEY, id);
-    else localStorage.removeItem(DEFAULT_KEY);
-  } catch {
-    /* ignore */
-  }
+  pushDefaultPromptId(id);
 }
 
 export function newId() {

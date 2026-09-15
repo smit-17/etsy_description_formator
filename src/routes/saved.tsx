@@ -1,3 +1,4 @@
+import { useCloudData } from "@/hooks/use-cloud-data";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -74,12 +75,12 @@ function SavedDescriptions() {
   const [sort, setSort] = useState<SortKey>("updated");
   const [moreFilters, setMoreFilters] = useState(false);
 
-  useEffect(() => {
+  useCloudData(() => {
     setListings(loadListings());
     setCategories(loadCategories());
     setAccounts(loadAccounts());
     setRecords(loadRecords());
-  }, []);
+  });
 
   const activeAccounts = useMemo(
     () => accounts.filter((a) => a.status === "Active").length,
