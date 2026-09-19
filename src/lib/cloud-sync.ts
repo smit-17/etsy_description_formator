@@ -189,7 +189,9 @@ const promptToRow = (p: SavedPrompt): Row => ({
 let loadedOnce = false;
 export const isLoaded = () => loadedOnce;
 
-const PAGE_LIMIT = 10000;
+// Description rows can be large. Small pages avoid the database statement
+// timeout that a single multi-megabyte `select *` response can hit.
+const PAGE_SIZE = 25;
 
 function unwrap<T>(res: { data: T[] | null; error: unknown }, table: string): T[] {
   if (res.error) {
@@ -202,6 +204,17 @@ function unwrap<T>(res: { data: T[] | null; error: unknown }, table: string): T[
 }
 
 let inFlight: Promise<void> | null = null;
+
+/** Writes currently in flight. A read always waits for them first, so a fresh
+ * save can never be overwritten by a read that started before it landed. */
+const pendingWrites = new Set<Promise<unknown>>();
+
+export function trackWrite<T>(p: Promise<T>): Promise<T> {
+  const wrapped = p.catch(() => undefined);
+  pendingWrites.add(wrapped);
+  void wrapped.finally(() => pendingWrites.delete(wrapped));
+  return p;
+}
 
 /**
  * Loads everything from the database. Throws when ANY table fails so a broken
@@ -216,25 +229,43 @@ export function refreshAll(): Promise<void> {
   return inFlight;
 }
 
-async function doRefresh(): Promise<void> {
-  const [listings, categories, accounts, records, targets, prompts, settings] = await Promise.all([
-    supabase.from("listings").select("*").limit(PAGE_LIMIT),
-    supabase.from("categories").select("*").limit(PAGE_LIMIT),
-    supabase.from("accounts").select("*").limit(PAGE_LIMIT),
-    supabase.from("listing_records").select("*").limit(PAGE_LIMIT),
-    supabase.from("targets").select("*").limit(PAGE_LIMIT),
-    supabase.from("prompts").select("*").limit(PAGE_LIMIT),
-    supabase.from("app_settings").select("*").limit(PAGE_LIMIT),
-  ]);
+let writeVersion = 0;
+
+async function doRefresh(depth = 0): Promise<void> {
+  // Never read over a save that is still being written.
+  while (pendingWrites.size > 0) {
+    await Promise.all([...pendingWrites]);
+  }
+  const versionAtStart = writeVersion;
+
+  async function readAll(table: string): Promise<Row[]> {
+    const rows: Row[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const result = await db.from(table).select("*").range(from, from + PAGE_SIZE - 1);
+      const page = unwrap<Row>(result, table);
+      rows.push(...page);
+      if (page.length < PAGE_SIZE) return rows;
+    }
+  }
+
+
+  const [listingRows, categoryRows, accountRows, recordRows, targetRows, promptRows, settingRows] =
+    await Promise.all([
+
+      readAll("listings"),
+      readAll("categories"),
+      readAll("accounts"),
+      readAll("listing_records"),
+      readAll("targets"),
+      readAll("prompts"),
+      readAll("app_settings"),
+    ]);
+
+  // A save started while this read was running: the result is already stale,
+  // so read again instead of putting older data back on screen.
+  if (writeVersion !== versionAtStart && depth < 2) return doRefresh(depth + 1);
 
   // Validate every response BEFORE touching the cache.
-  const listingRows = unwrap(listings, "listings");
-  const categoryRows = unwrap(categories, "categories");
-  const accountRows = unwrap(accounts, "accounts");
-  const recordRows = unwrap(records, "listing_records");
-  const targetRows = unwrap(targets, "targets");
-  const promptRows = unwrap(prompts, "prompts");
-  const settingRows = unwrap(settings, "app_settings");
 
   cache.listings = listingRows.map((r) => listingFromRow(r as Row));
   cache.categories = categoryRows.map((r) => str((r as Row)["name"])).filter(Boolean);
@@ -262,18 +293,57 @@ async function doRefresh(): Promise<void> {
 /* Saving                                                              */
 /* ------------------------------------------------------------------ */
 
-function fireAndForget(p: PromiseLike<unknown>) {
-  Promise.resolve(p).catch((err) => console.error("Cloud sync failed", err));
+/* Save failures used to be invisible: the card appeared on screen but the row
+ * never reached the database, so it was gone after a refresh. Failures are now
+ * retried and reported to the UI. */
+const errorListeners = new Set<(message: string | null) => void>();
+let lastSyncError: string | null = null;
+
+export const getSyncError = () => lastSyncError;
+
+export function subscribeSyncError(cb: (message: string | null) => void): () => void {
+  errorListeners.add(cb);
+  return () => errorListeners.delete(cb);
+}
+
+function reportSyncError(message: string | null) {
+  lastSyncError = message;
+  errorListeners.forEach((cb) => cb(message));
+}
+
+function fireAndForget(run: () => Promise<unknown>) {
+  writeVersion++;
+  trackWrite(
+
+    (async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await run();
+          reportSyncError(null);
+          return;
+        } catch (err) {
+          console.error("Cloud sync failed", err);
+          if (attempt === 2) {
+            reportSyncError(
+              err instanceof Error ? err.message : "Could not save to the database.",
+            );
+            return;
+          }
+          await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+        }
+      }
+    })(),
+  );
 }
 
 /**
- * Writes replace the full table contents, so they are only safe once the
- * database has actually been read. Before that, a write would delete records
- * the page never managed to load.
+ * Writes are only safe once the database has actually been read. Before that,
+ * a write could delete records the page never managed to load.
  */
 function guard(): boolean {
   if (loadedOnce) return true;
   console.warn("Ignoring save: shared data has not finished loading yet.");
+  reportSyncError("Still loading your data — please wait a moment and save again.");
   return false;
 }
 
@@ -283,106 +353,142 @@ const db = supabase as unknown as { from: (table: string) => any };
 const inList = (values: string[]) =>
   `(${values.map((v) => `"${v.replace(/"/g, '\\"')}"`).join(",")})`;
 
-async function syncRows(table: string, idColumn: string, rows: Row[]) {
-  if (rows.length > 0) {
-    const { error } = await db.from(table).upsert(rows);
+const CHUNK = 20;
+
+/**
+ * Only rows that actually changed are written. Sending every row on every save
+ * produced multi-megabyte requests that timed out, which is why new entries
+ * sometimes never reached the database.
+ */
+async function syncRows(
+  table: string,
+  idColumn: string,
+  previous: Row[],
+  rows: Row[],
+  removedIds: string[],
+) {
+  const before = new Map(previous.map((row) => [String(row[idColumn]), JSON.stringify(row)]));
+  const changed = rows.filter((row) => before.get(String(row[idColumn])) !== JSON.stringify(row));
+
+  for (let i = 0; i < changed.length; i += CHUNK) {
+    const { error } = await db
+      .from(table)
+      .upsert(changed.slice(i, i + CHUNK), { onConflict: idColumn });
     if (error) throw error;
   }
-  const ids = rows.map((r) => String(r[idColumn]));
-  const del = db.from(table).delete();
-  const { error } = await (ids.length > 0
-    ? del.not(idColumn, "in", inList(ids))
-    : del.neq(idColumn, "\u0000"));
-  if (error) throw error;
+  if (removedIds.length > 0) {
+    const { error } = await db.from(table).delete().in(idColumn, removedIds);
+    if (error) throw error;
+  }
 }
+
+const removed = <T extends Row>(previous: T[], next: T[], key: string) => {
+  const nextIds = new Set(next.map((row) => String(row[key])));
+  return previous.map((row) => String(row[key])).filter((id) => !nextIds.has(id));
+};
+
 
 export function pushListings(list: SavedListing[]) {
   if (!guard()) return;
+  const previous = cache.listings.map(listingToRow);
+  const rows = list.map(listingToRow);
   cache.listings = list;
-  fireAndForget(syncRows("listings", "id", list.map(listingToRow)));
+  fireAndForget(() => syncRows("listings", "id", previous, rows, removed(previous, rows, "id")));
 }
 
 export function pushCategories(list: string[]) {
   if (!guard()) return;
+  const previous = cache.categories.map((name) => ({ name }));
+  const rows = list.map((name) => ({ name }));
   cache.categories = list;
-  fireAndForget(
-    syncRows(
-      "categories",
-      "name",
-      list.map((name) => ({ name })),
-    ),
+  fireAndForget(() =>
+    syncRows("categories", "name", previous, rows, removed(previous, rows, "name")),
   );
 }
 
 export function pushAccounts(list: Account[]) {
   if (!guard()) return;
+  const previous = cache.accounts.map(accountToRow);
+  const rows = list.map(accountToRow);
   cache.accounts = list;
-  fireAndForget(syncRows("accounts", "id", list.map(accountToRow)));
+  fireAndForget(() => syncRows("accounts", "id", previous, rows, removed(previous, rows, "id")));
 }
 
 export function pushRecords(list: ListingRecord[]) {
   if (!guard()) return;
+  const previous = cache.records.map(recordToRow);
+  const rows = list.map(recordToRow);
   cache.records = list;
-  fireAndForget(syncRows("listing_records", "id", list.map(recordToRow)));
+  fireAndForget(() =>
+    syncRows("listing_records", "id", previous, rows, removed(previous, rows, "id")),
+  );
 }
 
 export function pushTargets(t: Targets) {
   if (!guard()) return;
   cache.targets = t;
-  fireAndForget(
-    (async () => {
-      const buckets: [string, Record<string, number>][] = [
-        ["account", t.accounts],
-        ["category", t.categories],
-      ];
-      for (const [kind, map] of buckets) {
-        const rows = Object.entries(map).map(([key, value]) => ({ kind, key, value }));
-        if (rows.length > 0) {
-          const { error } = await db.from("targets").upsert(rows);
-          if (error) throw error;
-        }
-        const keys = Object.keys(map);
-        const del = db.from("targets").delete().eq("kind", kind);
-        const { error } = await (keys.length > 0 ? del.not("key", "in", inList(keys)) : del);
+  fireAndForget(async () => {
+    const buckets: [string, Record<string, number>][] = [
+      ["account", t.accounts],
+      ["category", t.categories],
+    ];
+    for (const [kind, map] of buckets) {
+      const rows = Object.entries(map).map(([key, value]) => ({ kind, key, value }));
+      if (rows.length > 0) {
+        const { error } = await db.from("targets").upsert(rows);
         if (error) throw error;
       }
-    })(),
-  );
+      const keys = Object.keys(map);
+      const del = db.from("targets").delete().eq("kind", kind);
+      const { error } = await (keys.length > 0 ? del.not("key", "in", inList(keys)) : del);
+      if (error) throw error;
+    }
+  });
 }
 
 export function pushPrompts(list: SavedPrompt[]) {
   if (!guard()) return;
+  const previous = cache.prompts.map(promptToRow);
+  const rows = list.map(promptToRow);
   cache.prompts = list;
-  fireAndForget(syncRows("prompts", "id", list.map(promptToRow)));
+  fireAndForget(() => syncRows("prompts", "id", previous, rows, removed(previous, rows, "id")));
 }
 
 export function pushDefaultPromptId(id: string | null) {
   if (!guard()) return;
   cache.defaultPromptId = id;
-  fireAndForget(
-    id
+  fireAndForget(async () => {
+    const { error } = await (id
       ? db.from("app_settings").upsert({ key: DEFAULT_PROMPT_KEY, value: id })
-      : db.from("app_settings").delete().eq("key", DEFAULT_PROMPT_KEY),
-  );
+      : db.from("app_settings").delete().eq("key", DEFAULT_PROMPT_KEY));
+    if (error) throw error;
+  });
 }
+
 
 /* ------------------------------------------------------------------ */
 /* Live sync                                                           */
 /* ------------------------------------------------------------------ */
 
 export function subscribeCloud(onChange: () => void): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleRefresh = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(onChange, 300);
+  };
   const channel = supabase
     .channel("shared-data")
-    .on("postgres_changes", { event: "*", schema: "public", table: "listings" }, onChange)
-    .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, onChange)
-    .on("postgres_changes", { event: "*", schema: "public", table: "accounts" }, onChange)
-    .on("postgres_changes", { event: "*", schema: "public", table: "listing_records" }, onChange)
-    .on("postgres_changes", { event: "*", schema: "public", table: "targets" }, onChange)
-    .on("postgres_changes", { event: "*", schema: "public", table: "prompts" }, onChange)
-    .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "listings" }, scheduleRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, scheduleRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "accounts" }, scheduleRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "listing_records" }, scheduleRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "targets" }, scheduleRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "prompts" }, scheduleRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, scheduleRefresh)
     .subscribe();
 
   return () => {
+    if (timer) clearTimeout(timer);
     void supabase.removeChannel(channel);
   };
 }

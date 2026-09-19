@@ -1,6 +1,23 @@
 import { AlertTriangle, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import type { CloudState } from "@/hooks/use-cloud-data";
+import { getSyncError, subscribeSyncError } from "@/lib/cloud-sync";
+
+/** Warns when something typed on screen did not reach the database. */
+function SaveError() {
+  const [message, setMessage] = useState<string | null>(getSyncError());
+  useEffect(() => subscribeSyncError(setMessage), []);
+  if (!message) return null;
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-foreground">
+        <AlertTriangle className="h-4 w-4 text-destructive" />
+        <span>Your last change couldn&apos;t be saved to the database. {message}</span>
+      </div>
+    </div>
+  );
+}
 
 /** Loading / error banner for the shared database. */
 export function CloudStatus({ state, label = "data" }: { state: CloudState; label?: string }) {
@@ -42,5 +59,5 @@ export function CloudStatus({ state, label = "data" }: { state: CloudState; labe
     );
   }
 
-  return null;
+  return <SaveError />;
 }
