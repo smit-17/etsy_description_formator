@@ -1,4 +1,5 @@
 import { useCloudData } from "@/hooks/use-cloud-data";
+import { CloudStatus } from "@/components/CloudStatus";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { SectionHeader, mainTabs } from "@/components/SectionHeader";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -150,7 +151,7 @@ function ListSection() {
   const [targets, setTargets] = useState<Targets>({ accounts: {}, categories: {} });
   const [copied, setCopied] = useState<string | null>(null);
 
-  useCloudData(() => {
+  const cloud = useCloudData(() => {
     setListings(loadListings());
     setCategories(loadCategories());
     setAccounts(loadAccounts());
@@ -522,516 +523,521 @@ function ListSection() {
         }
       />
 
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-        {tab === "dashboard" ? (
-          <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <StatCard
-                index={1}
-                label="Total Products"
-                value={stats.totalProducts}
-                icon={<Package className="h-4 w-4" />}
-              />
-              <StatCard
-                index={2}
-                label="Total Listings"
-                value={stats.totalListings}
-                icon={<ListChecks className="h-4 w-4" />}
-              />
-              <StatCard
-                index={3}
-                label="Listed"
-                value={stats.listedProducts}
-                icon={<CheckCircle2 className="h-4 w-4" />}
-              />
-              <StatCard
-                index={4}
-                label="Pending"
-                value={stats.pending}
-                icon={<Clock className="h-4 w-4" />}
-              />
-              <StatCard
-                index={5}
-                label="Ready to List"
-                value={stats.ready}
-                icon={<Target className="h-4 w-4" />}
-              />
-              <StatCard
-                index={6}
-                label="Active Accounts"
-                value={stats.activeAccounts}
-                icon={<Store className="h-4 w-4" />}
-                hint={`${stats.notListed} not yet listed`}
-              />
-            </div>
-
-            <section className="mt-6 rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-soft)]">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">
-                  Listing Progress
-                </h2>
-                <span className="rounded-full bg-gold/25 px-3 py-1 text-[11px] font-semibold">
-                  {progress.next}
-                </span>
-              </div>
-              <ul className="mt-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                <Step done={progress.saved} label="Description Saved" />
-                <Step done={progress.category} label="Category Added" />
-                <Step done={progress.account} label="Account Selected" />
-                <Step done={progress.listing} label="Listing Created" />
-                <Step done={progress.url} label="URL Added" />
-              </ul>
-            </section>
-
-            <h2 className="mt-8 font-[family-name:var(--font-display)] text-lg font-semibold">
-              Accounts
-            </h2>
-            {accountStats.length ? (
-              <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {accountStats.map((s) => (
-                  <article
-                    key={s.account.id}
-                    className="flex h-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-soft)]"
-                  >
-                    <p className="truncate text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                      {s.account.platform}
-                    </p>
-                    <p className="truncate text-sm font-semibold text-foreground">
-                      {s.account.name}
-                    </p>
-                    <p className="mt-2 font-[family-name:var(--font-display)] text-3xl font-semibold leading-none">
-                      {s.total.toLocaleString()}
-                    </p>
-                    <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                      Listings
-                    </p>
-                    <ul className="mt-2 space-y-0.5">
-                      {s.categories.slice(0, 5).map(([cat, n]) => (
-                        <li
-                          key={cat}
-                          className="flex min-w-0 justify-between gap-2 text-xs text-muted-foreground"
-                        >
-                          <span className="truncate">{cat}</span>
-                          <span className="shrink-0 font-semibold text-foreground">{n}</span>
-                        </li>
-                      ))}
-                      {s.categories.length === 0 ? (
-                        <li className="text-xs text-muted-foreground">No listings yet</li>
-                      ) : null}
-                    </ul>
-                    {s.target > 0 ? (
-                      <ProgressBar value={s.total} max={s.target} />
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => openAccountModal(s.account)}
-                        className="mt-2 self-start text-[11px] font-medium text-gold hover:underline"
-                      >
-                        Set Listing Target
-                      </button>
-                    )}
-                    <div className="mt-auto pt-3">
-                      <p className="text-[11px] text-muted-foreground">
-                        Month {s.month} · Today {s.today}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFAccount(s.account.id);
-                          setTab("products");
-                        }}
-                        className="mt-2 text-[11px] font-semibold text-foreground hover:text-gold"
-                      >
-                        View Account →
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-3 rounded-2xl border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">
-                Add your first account to start tracking listings.
-              </p>
-            )}
-
-            <div className="mt-8 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">
-                Category targets
-              </h2>
-              <button type="button" onClick={() => setCatTargetModal(true)} className={chipBtn}>
-                <Target className="inline h-3 w-3" /> Set Targets
-              </button>
-            </div>
-            {categoryTargets.length ? (
-              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {categoryTargets.map((c) => (
-                  <div
-                    key={c.name}
-                    className="min-w-0 rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-soft)]"
-                  >
-                    <p className="truncate text-xs font-medium text-muted-foreground">{c.name}</p>
-                    <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold leading-none">
-                      {c.listed.toLocaleString()}
-                    </p>
-                    {c.target > 0 ? (
-                      <>
-                        <ProgressBar value={c.listed} max={c.target} />
-                        <p className="text-[11px] text-muted-foreground">
-                          Remaining {Math.max(0, c.target - c.listed).toLocaleString()}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="mt-2 text-[11px] text-muted-foreground">No target set</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </>
-        ) : null}
-
-        {tab === "products" ? (
-          <>
-            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card p-2.5 shadow-[var(--shadow-soft)]">
-              <label className="relative min-w-0 flex-1 basis-40">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  value={fSku}
-                  onChange={(e) => setFSku(e.target.value)}
-                  placeholder="SKU"
-                  className={`${pill} w-full pl-9`}
+      <CloudStatus state={cloud} label="listings" />
+      {cloud.status === "loading" ? null : (
+        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+          {tab === "dashboard" ? (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                <StatCard
+                  index={1}
+                  label="Total Products"
+                  value={stats.totalProducts}
+                  icon={<Package className="h-4 w-4" />}
                 />
-              </label>
-              <input
-                value={fTitle}
-                onChange={(e) => setFTitle(e.target.value)}
-                placeholder="Title"
-                className={`${pill} flex-1 basis-40`}
-              />
-              <select
-                value={fCategory}
-                onChange={(e) => setFCategory(e.target.value)}
-                className={pill}
-              >
-                <option value="all">All categories</option>
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={fAccount}
-                onChange={(e) => setFAccount(e.target.value)}
-                className={pill}
-              >
-                <option value="all">All accounts</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} — {a.platform}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setMoreFilters((v) => !v)}
-                className="rounded-full border border-border bg-secondary/60 px-3 py-2 text-xs font-medium hover:border-gold"
-              >
-                More Filters
-              </button>
-              {moreFilters ? (
-                <div className="flex w-full flex-wrap gap-2 border-t border-border pt-2">
-                  <select
-                    value={fPlatform}
-                    onChange={(e) => setFPlatform(e.target.value)}
-                    className={pill}
-                  >
-                    <option value="all">All platforms</option>
-                    {[...new Set(accounts.map((a) => a.platform))].map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={fListed}
-                    onChange={(e) => setFListed(e.target.value)}
-                    className={pill}
-                  >
-                    <option value="all">Listed & not listed</option>
-                    <option value="listed">Listed</option>
-                    <option value="not">Not listed</option>
-                  </select>
-                  <select
-                    value={fStatus}
-                    onChange={(e) => setFStatus(e.target.value)}
-                    className={pill}
-                  >
-                    <option value="all">Any listing status</option>
-                    {LISTING_STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="date"
-                    value={fFrom}
-                    onChange={(e) => setFFrom(e.target.value)}
-                    className={pill}
-                  />
-                  <input
-                    type="date"
-                    value={fTo}
-                    onChange={(e) => setFTo(e.target.value)}
-                    className={pill}
-                  />
-                </div>
-              ) : null}
-            </div>
-
-            {products.length ? (
-              <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {products.map(({ l, mine, listed }, i) => (
-                  <article
-                    key={l.id}
-                    className="flex h-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-soft)] transition-colors hover:border-gold/70"
-                  >
-                    <div className="flex min-w-0 items-center justify-between gap-2">
-                      <span className="text-[10px] font-semibold tracking-[0.2em] text-gold">
-                        #{String(i + 1).padStart(3, "0")}
-                      </span>
-                      <StatusChip
-                        status={
-                          listed === 0
-                            ? "Not Listed"
-                            : listed >= Math.max(accounts.length, 1)
-                              ? "Listed"
-                              : "Partially Listed"
-                        }
-                      />
-                    </div>
-                    <p className="mt-2 truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                      {l.sku}
-                    </p>
-                    <h3 className="mt-1 line-clamp-2 break-words text-sm font-semibold">
-                      {l.fields.finalTitle || "Untitled listing"}
-                    </h3>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {l.listingCategory || "No category"}
-                    </p>
-
-                    <p className="mt-3 text-xs font-semibold text-foreground">
-                      {listed} / {Math.max(accounts.length, mine.length)} Accounts Listed
-                    </p>
-                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                      <div
-                        className="h-full rounded-full bg-navy"
-                        style={{
-                          width: `${
-                            Math.max(accounts.length, mine.length) > 0
-                              ? Math.min(
-                                  100,
-                                  Math.round(
-                                    (listed / Math.max(accounts.length, mine.length)) * 100,
-                                  ),
-                                )
-                              : 0
-                          }%`,
-                        }}
-                      />
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {accounts.slice(0, 6).map((a) => {
-                        const rec = mine.find((r) => r.accountId === a.id);
-                        const ok = rec?.status === "Listed";
-                        return (
-                          <span
-                            key={a.id}
-                            className={`max-w-full truncate rounded-full px-2 py-0.5 text-[10px] ${
-                              ok
-                                ? "bg-navy text-navy-foreground"
-                                : rec
-                                  ? "bg-gold/25 text-foreground"
-                                  : "bg-secondary text-muted-foreground"
-                            }`}
-                          >
-                            {ok ? "✓ " : "○ "}
-                            {a.name}
-                          </span>
-                        );
-                      })}
-                    </div>
-
-                    {mine.length ? (
-                      <ul className="mt-3 space-y-1.5 border-t border-border pt-2">
-                        {mine.map((r) => {
-                          const acc = accountById.get(r.accountId);
-                          return (
-                            <li key={r.id} className="min-w-0 text-[11px]">
-                              <p className="truncate text-muted-foreground">
-                                {acc ? `${acc.platform} · ${acc.name}` : "Unknown account"} ·{" "}
-                                {r.status}
-                              </p>
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {r.url ? (
-                                  <a
-                                    href={r.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className={chipBtn}
-                                  >
-                                    <ExternalLink className="inline h-3 w-3" /> Open
-                                  </a>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={() => openListingModal(l.sku, r)}
-                                  className={chipBtn}
-                                >
-                                  Edit
-                                </button>
-                                {r.url ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => copy(r.url, r.id)}
-                                    className={chipBtn}
-                                  >
-                                    {copied === r.id ? "Copied!" : "Copy URL"}
-                                  </button>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={() => removeRecord(r.id)}
-                                  className={`${chipBtn} text-destructive`}
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : null}
-
-                    <button
-                      type="button"
-                      onClick={() => openListingModal(l.sku, null)}
-                      className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-full bg-navy px-3 py-2 text-xs font-semibold text-navy-foreground"
-                    >
-                      <Plus className="h-3.5 w-3.5" /> Add Listing
-                    </button>
-                  </article>
-                ))}
+                <StatCard
+                  index={2}
+                  label="Total Listings"
+                  value={stats.totalListings}
+                  icon={<ListChecks className="h-4 w-4" />}
+                />
+                <StatCard
+                  index={3}
+                  label="Listed"
+                  value={stats.listedProducts}
+                  icon={<CheckCircle2 className="h-4 w-4" />}
+                />
+                <StatCard
+                  index={4}
+                  label="Pending"
+                  value={stats.pending}
+                  icon={<Clock className="h-4 w-4" />}
+                />
+                <StatCard
+                  index={5}
+                  label="Ready to List"
+                  value={stats.ready}
+                  icon={<Target className="h-4 w-4" />}
+                />
+                <StatCard
+                  index={6}
+                  label="Active Accounts"
+                  value={stats.activeAccounts}
+                  icon={<Store className="h-4 w-4" />}
+                  hint={`${stats.notListed} not yet listed`}
+                />
               </div>
-            ) : (
-              <p className="mt-8 rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
-                No products match these filters. Save a description first, then track it here.
-              </p>
-            )}
-          </>
-        ) : null}
 
-        {tab === "accounts" ? (
-          <>
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">
+              <section className="mt-6 rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-soft)]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">
+                    Listing Progress
+                  </h2>
+                  <span className="rounded-full bg-gold/25 px-3 py-1 text-[11px] font-semibold">
+                    {progress.next}
+                  </span>
+                </div>
+                <ul className="mt-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                  <Step done={progress.saved} label="Description Saved" />
+                  <Step done={progress.category} label="Category Added" />
+                  <Step done={progress.account} label="Account Selected" />
+                  <Step done={progress.listing} label="Listing Created" />
+                  <Step done={progress.url} label="URL Added" />
+                </ul>
+              </section>
+
+              <h2 className="mt-8 font-[family-name:var(--font-display)] text-lg font-semibold">
                 Accounts
               </h2>
-              <button
-                type="button"
-                onClick={() => openAccountModal("new")}
-                className="inline-flex items-center gap-1.5 rounded-full bg-navy px-4 py-2 text-xs font-semibold text-navy-foreground"
-              >
-                <Plus className="h-3.5 w-3.5" /> Add Account
-              </button>
-            </div>
-            {accountStats.length ? (
-              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {accountStats.map((s) => (
-                  <article
-                    key={s.account.id}
-                    className="flex h-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-soft)]"
-                  >
-                    <div className="flex min-w-0 items-center justify-between gap-2">
+              {accountStats.length ? (
+                <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {accountStats.map((s) => (
+                    <article
+                      key={s.account.id}
+                      className="flex h-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-soft)]"
+                    >
                       <p className="truncate text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                         {s.account.platform}
                       </p>
-                      <StatusChip status={s.account.status} />
-                    </div>
-                    <p className="mt-1 truncate text-sm font-semibold">{s.account.name}</p>
-                    {s.account.code ? (
-                      <p className="truncate text-[11px] text-muted-foreground">{s.account.code}</p>
-                    ) : null}
-                    <p className="mt-2 font-[family-name:var(--font-display)] text-3xl font-semibold leading-none">
-                      {s.total.toLocaleString()}
-                    </p>
-                    <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                      Listings · {s.categories.length} categories
-                    </p>
-                    {s.target > 0 ? <ProgressBar value={s.total} max={s.target} /> : null}
-                    <p className="mt-2 text-[11px] text-muted-foreground">
-                      Last listing: {s.last ? formatDate(s.last) : "—"}
-                    </p>
-                    <div className="mt-auto flex flex-wrap gap-1.5 pt-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFAccount(s.account.id);
-                          setTab("products");
-                        }}
-                        className={chipBtn}
-                      >
-                        View Listings
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openAccountModal(s.account)}
-                        className={chipBtn}
-                      >
-                        Edit Account
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          persistAccounts(
-                            accounts.map((a) =>
-                              a.id === s.account.id
-                                ? {
-                                    ...a,
-                                    status: a.status === "Paused" ? "Active" : "Paused",
-                                    updatedAt: new Date().toISOString(),
-                                  }
-                                : a,
-                            ),
-                          )
-                        }
-                        className={chipBtn}
-                      >
-                        {s.account.status === "Paused" ? "Resume" : "Pause"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          persistAccounts(accounts.filter((a) => a.id !== s.account.id));
-                          persistRecords(records.filter((r) => r.accountId !== s.account.id));
-                        }}
-                        className={`${chipBtn} text-destructive`}
-                      >
-                        <Trash2 className="inline h-3 w-3" /> Delete
-                      </button>
-                    </div>
-                  </article>
-                ))}
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {s.account.name}
+                      </p>
+                      <p className="mt-2 font-[family-name:var(--font-display)] text-3xl font-semibold leading-none">
+                        {s.total.toLocaleString()}
+                      </p>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                        Listings
+                      </p>
+                      <ul className="mt-2 space-y-0.5">
+                        {s.categories.slice(0, 5).map(([cat, n]) => (
+                          <li
+                            key={cat}
+                            className="flex min-w-0 justify-between gap-2 text-xs text-muted-foreground"
+                          >
+                            <span className="truncate">{cat}</span>
+                            <span className="shrink-0 font-semibold text-foreground">{n}</span>
+                          </li>
+                        ))}
+                        {s.categories.length === 0 ? (
+                          <li className="text-xs text-muted-foreground">No listings yet</li>
+                        ) : null}
+                      </ul>
+                      {s.target > 0 ? (
+                        <ProgressBar value={s.total} max={s.target} />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openAccountModal(s.account)}
+                          className="mt-2 self-start text-[11px] font-medium text-gold hover:underline"
+                        >
+                          Set Listing Target
+                        </button>
+                      )}
+                      <div className="mt-auto pt-3">
+                        <p className="text-[11px] text-muted-foreground">
+                          Month {s.month} · Today {s.today}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFAccount(s.account.id);
+                            setTab("products");
+                          }}
+                          className="mt-2 text-[11px] font-semibold text-foreground hover:text-gold"
+                        >
+                          View Account →
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 rounded-2xl border border-dashed border-border bg-card p-6 text-sm text-muted-foreground">
+                  Add your first account to start tracking listings.
+                </p>
+              )}
+
+              <div className="mt-8 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">
+                  Category targets
+                </h2>
+                <button type="button" onClick={() => setCatTargetModal(true)} className={chipBtn}>
+                  <Target className="inline h-3 w-3" /> Set Targets
+                </button>
               </div>
-            ) : (
-              <p className="mt-4 rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
-                No accounts yet. Add Etsy shops, your website, Alibaba stores and more.
-              </p>
-            )}
-          </>
-        ) : null}
-      </main>
+              {categoryTargets.length ? (
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {categoryTargets.map((c) => (
+                    <div
+                      key={c.name}
+                      className="min-w-0 rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-soft)]"
+                    >
+                      <p className="truncate text-xs font-medium text-muted-foreground">{c.name}</p>
+                      <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold leading-none">
+                        {c.listed.toLocaleString()}
+                      </p>
+                      {c.target > 0 ? (
+                        <>
+                          <ProgressBar value={c.listed} max={c.target} />
+                          <p className="text-[11px] text-muted-foreground">
+                            Remaining {Math.max(0, c.target - c.listed).toLocaleString()}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-2 text-[11px] text-muted-foreground">No target set</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
+          {tab === "products" ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card p-2.5 shadow-[var(--shadow-soft)]">
+                <label className="relative min-w-0 flex-1 basis-40">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={fSku}
+                    onChange={(e) => setFSku(e.target.value)}
+                    placeholder="SKU"
+                    className={`${pill} w-full pl-9`}
+                  />
+                </label>
+                <input
+                  value={fTitle}
+                  onChange={(e) => setFTitle(e.target.value)}
+                  placeholder="Title"
+                  className={`${pill} flex-1 basis-40`}
+                />
+                <select
+                  value={fCategory}
+                  onChange={(e) => setFCategory(e.target.value)}
+                  className={pill}
+                >
+                  <option value="all">All categories</option>
+                  {categories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={fAccount}
+                  onChange={(e) => setFAccount(e.target.value)}
+                  className={pill}
+                >
+                  <option value="all">All accounts</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} — {a.platform}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setMoreFilters((v) => !v)}
+                  className="rounded-full border border-border bg-secondary/60 px-3 py-2 text-xs font-medium hover:border-gold"
+                >
+                  More Filters
+                </button>
+                {moreFilters ? (
+                  <div className="flex w-full flex-wrap gap-2 border-t border-border pt-2">
+                    <select
+                      value={fPlatform}
+                      onChange={(e) => setFPlatform(e.target.value)}
+                      className={pill}
+                    >
+                      <option value="all">All platforms</option>
+                      {[...new Set(accounts.map((a) => a.platform))].map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={fListed}
+                      onChange={(e) => setFListed(e.target.value)}
+                      className={pill}
+                    >
+                      <option value="all">Listed & not listed</option>
+                      <option value="listed">Listed</option>
+                      <option value="not">Not listed</option>
+                    </select>
+                    <select
+                      value={fStatus}
+                      onChange={(e) => setFStatus(e.target.value)}
+                      className={pill}
+                    >
+                      <option value="all">Any listing status</option>
+                      {LISTING_STATUSES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="date"
+                      value={fFrom}
+                      onChange={(e) => setFFrom(e.target.value)}
+                      className={pill}
+                    />
+                    <input
+                      type="date"
+                      value={fTo}
+                      onChange={(e) => setFTo(e.target.value)}
+                      className={pill}
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              {products.length ? (
+                <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {products.map(({ l, mine, listed }, i) => (
+                    <article
+                      key={l.id}
+                      className="flex h-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-soft)] transition-colors hover:border-gold/70"
+                    >
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <span className="text-[10px] font-semibold tracking-[0.2em] text-gold">
+                          #{String(i + 1).padStart(3, "0")}
+                        </span>
+                        <StatusChip
+                          status={
+                            listed === 0
+                              ? "Not Listed"
+                              : listed >= Math.max(accounts.length, 1)
+                                ? "Listed"
+                                : "Partially Listed"
+                          }
+                        />
+                      </div>
+                      <p className="mt-2 truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        {l.sku}
+                      </p>
+                      <h3 className="mt-1 line-clamp-2 break-words text-sm font-semibold">
+                        {l.fields.finalTitle || "Untitled listing"}
+                      </h3>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {l.listingCategory || "No category"}
+                      </p>
+
+                      <p className="mt-3 text-xs font-semibold text-foreground">
+                        {listed} / {Math.max(accounts.length, mine.length)} Accounts Listed
+                      </p>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                        <div
+                          className="h-full rounded-full bg-navy"
+                          style={{
+                            width: `${
+                              Math.max(accounts.length, mine.length) > 0
+                                ? Math.min(
+                                    100,
+                                    Math.round(
+                                      (listed / Math.max(accounts.length, mine.length)) * 100,
+                                    ),
+                                  )
+                                : 0
+                            }%`,
+                          }}
+                        />
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {accounts.slice(0, 6).map((a) => {
+                          const rec = mine.find((r) => r.accountId === a.id);
+                          const ok = rec?.status === "Listed";
+                          return (
+                            <span
+                              key={a.id}
+                              className={`max-w-full truncate rounded-full px-2 py-0.5 text-[10px] ${
+                                ok
+                                  ? "bg-navy text-navy-foreground"
+                                  : rec
+                                    ? "bg-gold/25 text-foreground"
+                                    : "bg-secondary text-muted-foreground"
+                              }`}
+                            >
+                              {ok ? "✓ " : "○ "}
+                              {a.name}
+                            </span>
+                          );
+                        })}
+                      </div>
+
+                      {mine.length ? (
+                        <ul className="mt-3 space-y-1.5 border-t border-border pt-2">
+                          {mine.map((r) => {
+                            const acc = accountById.get(r.accountId);
+                            return (
+                              <li key={r.id} className="min-w-0 text-[11px]">
+                                <p className="truncate text-muted-foreground">
+                                  {acc ? `${acc.platform} · ${acc.name}` : "Unknown account"} ·{" "}
+                                  {r.status}
+                                </p>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {r.url ? (
+                                    <a
+                                      href={r.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className={chipBtn}
+                                    >
+                                      <ExternalLink className="inline h-3 w-3" /> Open
+                                    </a>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    onClick={() => openListingModal(l.sku, r)}
+                                    className={chipBtn}
+                                  >
+                                    Edit
+                                  </button>
+                                  {r.url ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => copy(r.url, r.id)}
+                                      className={chipBtn}
+                                    >
+                                      {copied === r.id ? "Copied!" : "Copy URL"}
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    onClick={() => removeRecord(r.id)}
+                                    className={`${chipBtn} text-destructive`}
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        onClick={() => openListingModal(l.sku, null)}
+                        className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-full bg-navy px-3 py-2 text-xs font-semibold text-navy-foreground"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Add Listing
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-8 rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
+                  No products match these filters. Save a description first, then track it here.
+                </p>
+              )}
+            </>
+          ) : null}
+
+          {tab === "accounts" ? (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">
+                  Accounts
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => openAccountModal("new")}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-navy px-4 py-2 text-xs font-semibold text-navy-foreground"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Account
+                </button>
+              </div>
+              {accountStats.length ? (
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {accountStats.map((s) => (
+                    <article
+                      key={s.account.id}
+                      className="flex h-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-soft)]"
+                    >
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <p className="truncate text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                          {s.account.platform}
+                        </p>
+                        <StatusChip status={s.account.status} />
+                      </div>
+                      <p className="mt-1 truncate text-sm font-semibold">{s.account.name}</p>
+                      {s.account.code ? (
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {s.account.code}
+                        </p>
+                      ) : null}
+                      <p className="mt-2 font-[family-name:var(--font-display)] text-3xl font-semibold leading-none">
+                        {s.total.toLocaleString()}
+                      </p>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                        Listings · {s.categories.length} categories
+                      </p>
+                      {s.target > 0 ? <ProgressBar value={s.total} max={s.target} /> : null}
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        Last listing: {s.last ? formatDate(s.last) : "—"}
+                      </p>
+                      <div className="mt-auto flex flex-wrap gap-1.5 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFAccount(s.account.id);
+                            setTab("products");
+                          }}
+                          className={chipBtn}
+                        >
+                          View Listings
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openAccountModal(s.account)}
+                          className={chipBtn}
+                        >
+                          Edit Account
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            persistAccounts(
+                              accounts.map((a) =>
+                                a.id === s.account.id
+                                  ? {
+                                      ...a,
+                                      status: a.status === "Paused" ? "Active" : "Paused",
+                                      updatedAt: new Date().toISOString(),
+                                    }
+                                  : a,
+                              ),
+                            )
+                          }
+                          className={chipBtn}
+                        >
+                          {s.account.status === "Paused" ? "Resume" : "Pause"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            persistAccounts(accounts.filter((a) => a.id !== s.account.id));
+                            persistRecords(records.filter((r) => r.accountId !== s.account.id));
+                          }}
+                          className={`${chipBtn} text-destructive`}
+                        >
+                          <Trash2 className="inline h-3 w-3" /> Delete
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-4 rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
+                  No accounts yet. Add Etsy shops, your website, Alibaba stores and more.
+                </p>
+              )}
+            </>
+          ) : null}
+        </main>
+      )}
 
       {catTargetModal ? (
         <Modal title="Category Targets" onClose={() => setCatTargetModal(false)}>

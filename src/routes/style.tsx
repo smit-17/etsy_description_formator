@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Check, ClipboardPaste, Copy, Eraser, Wand2 } from "lucide-react";
 
 import { SectionHeader, mainTabs } from "@/components/SectionHeader";
@@ -34,8 +34,6 @@ export const Route = createFileRoute("/style")({
   }),
   component: StylePage,
 });
-
-const STORAGE_KEY = "etsy-formatter-state-v1";
 
 const headingChoices: { value: HeadingStyle; label: string }[] = [
   { value: "star", label: "✦ Heading ✦" },
@@ -123,33 +121,6 @@ function StylePage() {
   const [input, setInput] = useState("");
   const [options, setOptions] = useState<FormatOptions>(defaultOptions);
   const [copied, setCopied] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as {
-          input?: string;
-          options?: Partial<FormatOptions>;
-        };
-        if (typeof parsed.input === "string") setInput(parsed.input);
-        if (parsed.options) setOptions({ ...defaultOptions, ...parsed.options });
-      }
-    } catch {
-      /* ignore */
-    }
-    setLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    if (!loaded) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ input, options }));
-    } catch {
-      /* ignore */
-    }
-  }, [input, options, loaded]);
 
   const output = useMemo(() => formatEtsy(input, options), [input, options]);
 

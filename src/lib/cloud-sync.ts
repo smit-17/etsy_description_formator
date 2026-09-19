@@ -1,8 +1,42 @@
-import { supabase } from "@/integrations/supabase/client";
+import { createClient } from "@supabase/supabase-js";
 
+import type { Database } from "@/integrations/supabase/types";
 import type { Account, ListingRecord, Targets } from "@/lib/list-store";
 import type { SavedListing } from "@/lib/listings-store";
 import type { SavedPrompt } from "@/lib/prompts-store";
+
+/**
+ * Dedicated client for the shared (non user-scoped) data tables.
+ *
+ * The app-wide client waits for a brokered auth session before it issues any
+ * request, which delayed — and sometimes stalled — the first page load. This
+ * data is shared by everyone and protected by public policies, so it is read
+ * and written with a session-less client that starts fetching immediately.
+ */
+const SUPABASE_URL =
+  (import.meta.env["VITE_SUPABASE_URL"] as string | undefined) ?? process.env["SUPABASE_URL"]!;
+const SUPABASE_KEY =
+  (import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"] as string | undefined) ??
+  process.env["SUPABASE_PUBLISHABLE_KEY"]!;
+
+const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false, storage: undefined },
+  global: {
+    fetch: (input, init) => {
+      const headers = new Headers(init?.headers);
+      // New-format publishable keys are opaque strings, not bearer JWTs.
+      if (
+        /^sb_(publishable|secret)_/.test(SUPABASE_KEY) &&
+        headers.get("Authorization") === `Bearer ${SUPABASE_KEY}`
+      ) {
+        headers.delete("Authorization");
+      }
+      headers.set("apikey", SUPABASE_KEY);
+      return fetch(input, { ...init, headers });
+    },
+  },
+});
+
 
 /**
  * Shared cloud data layer.
@@ -155,36 +189,71 @@ const promptToRow = (p: SavedPrompt): Row => ({
 let loadedOnce = false;
 export const isLoaded = () => loadedOnce;
 
-export async function refreshAll(): Promise<void> {
+const PAGE_LIMIT = 10000;
+
+function unwrap<T>(res: { data: T[] | null; error: unknown }, table: string): T[] {
+  if (res.error) {
+    throw new Error(
+      `Failed to load "${table}": ${(res.error as { message?: string }).message ?? String(res.error)}`,
+    );
+  }
+  if (!res.data) throw new Error(`Failed to load "${table}": no data returned`);
+  return res.data;
+}
+
+let inFlight: Promise<void> | null = null;
+
+/**
+ * Loads everything from the database. Throws when ANY table fails so a broken
+ * request is never mistaken for an empty database — the cache keeps its
+ * previous contents in that case.
+ */
+export function refreshAll(): Promise<void> {
+  if (inFlight) return inFlight;
+  inFlight = doRefresh().finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+async function doRefresh(): Promise<void> {
   const [listings, categories, accounts, records, targets, prompts, settings] = await Promise.all([
-    supabase.from("listings").select("*"),
-    supabase.from("categories").select("*"),
-    supabase.from("accounts").select("*"),
-    supabase.from("listing_records").select("*"),
-    supabase.from("targets").select("*"),
-    supabase.from("prompts").select("*"),
-    supabase.from("app_settings").select("*"),
+    supabase.from("listings").select("*").limit(PAGE_LIMIT),
+    supabase.from("categories").select("*").limit(PAGE_LIMIT),
+    supabase.from("accounts").select("*").limit(PAGE_LIMIT),
+    supabase.from("listing_records").select("*").limit(PAGE_LIMIT),
+    supabase.from("targets").select("*").limit(PAGE_LIMIT),
+    supabase.from("prompts").select("*").limit(PAGE_LIMIT),
+    supabase.from("app_settings").select("*").limit(PAGE_LIMIT),
   ]);
 
-  cache.listings = (listings.data ?? []).map((r) => listingFromRow(r as Row));
-  cache.categories = (categories.data ?? []).map((r) => str((r as Row)["name"])).filter(Boolean);
-  cache.accounts = (accounts.data ?? []).map((r) => accountFromRow(r as Row));
-  cache.records = (records.data ?? []).map((r) => recordFromRow(r as Row));
+  // Validate every response BEFORE touching the cache.
+  const listingRows = unwrap(listings, "listings");
+  const categoryRows = unwrap(categories, "categories");
+  const accountRows = unwrap(accounts, "accounts");
+  const recordRows = unwrap(records, "listing_records");
+  const targetRows = unwrap(targets, "targets");
+  const promptRows = unwrap(prompts, "prompts");
+  const settingRows = unwrap(settings, "app_settings");
+
+  cache.listings = listingRows.map((r) => listingFromRow(r as Row));
+  cache.categories = categoryRows.map((r) => str((r as Row)["name"])).filter(Boolean);
+  cache.accounts = accountRows.map((r) => accountFromRow(r as Row));
+  cache.records = recordRows.map((r) => recordFromRow(r as Row));
 
   const t: Targets = { accounts: {}, categories: {} };
-  for (const raw of targets.data ?? []) {
+  for (const raw of targetRows) {
     const row = raw as Row;
     const bucket = str(row["kind"]) === "category" ? t.categories : t.accounts;
     bucket[str(row["key"])] = typeof row["value"] === "number" ? (row["value"] as number) : 0;
   }
   cache.targets = t;
 
-  cache.prompts = (prompts.data ?? []).map((r) => promptFromRow(r as Row));
+  cache.prompts = promptRows.map((r) => promptFromRow(r as Row));
 
-  const defaultRow = (settings.data ?? []).find((r) => (r as Row)["key"] === DEFAULT_PROMPT_KEY) as
-    | Row
-    | undefined;
-  cache.defaultPromptId = defaultRow ? (str(defaultRow["value"]) || null) : null;
+  const defaultRow = settingRows.find((r) => (r as Row)["key"] === DEFAULT_PROMPT_KEY) as
+    Row | undefined;
+  cache.defaultPromptId = defaultRow ? str(defaultRow["value"]) || null : null;
 
   loadedOnce = true;
 }
@@ -197,10 +266,22 @@ function fireAndForget(p: PromiseLike<unknown>) {
   Promise.resolve(p).catch((err) => console.error("Cloud sync failed", err));
 }
 
+/**
+ * Writes replace the full table contents, so they are only safe once the
+ * database has actually been read. Before that, a write would delete records
+ * the page never managed to load.
+ */
+function guard(): boolean {
+  if (loadedOnce) return true;
+  console.warn("Ignoring save: shared data has not finished loading yet.");
+  return false;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const db = supabase as unknown as { from: (table: string) => any };
 
-const inList = (values: string[]) => `(${values.map((v) => `"${v.replace(/"/g, '\\"')}"`).join(",")})`;
+const inList = (values: string[]) =>
+  `(${values.map((v) => `"${v.replace(/"/g, '\\"')}"`).join(",")})`;
 
 async function syncRows(table: string, idColumn: string, rows: Row[]) {
   if (rows.length > 0) {
@@ -216,26 +297,37 @@ async function syncRows(table: string, idColumn: string, rows: Row[]) {
 }
 
 export function pushListings(list: SavedListing[]) {
+  if (!guard()) return;
   cache.listings = list;
   fireAndForget(syncRows("listings", "id", list.map(listingToRow)));
 }
 
 export function pushCategories(list: string[]) {
+  if (!guard()) return;
   cache.categories = list;
-  fireAndForget(syncRows("categories", "name", list.map((name) => ({ name }))));
+  fireAndForget(
+    syncRows(
+      "categories",
+      "name",
+      list.map((name) => ({ name })),
+    ),
+  );
 }
 
 export function pushAccounts(list: Account[]) {
+  if (!guard()) return;
   cache.accounts = list;
   fireAndForget(syncRows("accounts", "id", list.map(accountToRow)));
 }
 
 export function pushRecords(list: ListingRecord[]) {
+  if (!guard()) return;
   cache.records = list;
   fireAndForget(syncRows("listing_records", "id", list.map(recordToRow)));
 }
 
 export function pushTargets(t: Targets) {
+  if (!guard()) return;
   cache.targets = t;
   fireAndForget(
     (async () => {
@@ -259,11 +351,13 @@ export function pushTargets(t: Targets) {
 }
 
 export function pushPrompts(list: SavedPrompt[]) {
+  if (!guard()) return;
   cache.prompts = list;
   fireAndForget(syncRows("prompts", "id", list.map(promptToRow)));
 }
 
 export function pushDefaultPromptId(id: string | null) {
+  if (!guard()) return;
   cache.defaultPromptId = id;
   fireAndForget(
     id
